@@ -9,6 +9,7 @@ if __name__ == '__main__':
     settings.configure()
 
 from datetime import date, datetime
+import imp
 import os
 import sys
 import traceback
@@ -213,9 +214,6 @@ class TemplateLoaderTests(TestCase):
             test_template_sources('/DIR1/index.HTML', template_dirs,
                                   ['/DIR1/index.HTML'])
 
-    # Turn TEMPLATE_DEBUG on, so that the origin file name will be kept with
-    # the compiled templates.
-    @override_settings(TEMPLATE_DEBUG=True)
     def test_loader_debug_origin(self):
         old_loaders = loader.template_source_loaders
 
@@ -251,18 +249,46 @@ class TemplateLoaderTests(TestCase):
             loader.template_source_loaders = old_loaders
 
     def test_loader_origin(self):
-        with self.settings(TEMPLATE_DEBUG=True):
-            template = loader.get_template('login.html')
-            self.assertEqual(template.origin.loadname, 'login.html')
+        template = loader.get_template('login.html')
+        self.assertEqual(template.origin.loadname, 'login.html')
 
     def test_string_origin(self):
-        with self.settings(TEMPLATE_DEBUG=True):
-            template = Template('string template')
-            self.assertEqual(template.origin.source, 'string template')
+        template = Template('string template')
+        self.assertEqual(template.origin.source, 'string template')
 
-    def test_debug_false_origin(self):
-        template = loader.get_template('login.html')
-        self.assertEqual(template.origin, None)
+    def test_extended_self(self):
+        """
+        Test that when a template extends itself recursion is avoided and when
+        no other template with the same name is found, a ``TemplateDoesNotExist``
+        is raised. Test that when an other template with the same name exists
+        this other template is extended.
+        """
+        name = 'test_extend_self.html'
+        old_loaders = loader.template_source_loaders
+        try:
+            # Recursion must be avoided and a TemplateDoesNotExist exception
+            # must be raised when a template extends itself and no other
+            # template with the same name exists.
+            this_dir = os.path.dirname(os.path.abspath(upath(__file__)))
+            template_dir = os.path.join(this_dir, 'templates')
+            with override_settings(TEMPLATE_DIRS=[template_dir]):
+                loader.template_source_loaders = (filesystem.Loader(),)
+                tmpl = loader.select_template([name])
+                with self.assertRaises(template.TemplateDoesNotExist):
+                    r = tmpl.render(template.Context({}))
+                # When a template extends itself and an other template with the
+                # same name is found, check that this other template is the
+                # extended one.
+                with override_settings(INSTALLED_APPS=['template_tests.test_app']):
+                    imp.reload(app_directories)
+                    loader.template_source_loaders = (filesystem.Loader(),
+                                                      app_directories.Loader())
+                    tmpl = loader.select_template([name])
+                    r = tmpl.render(template.Context({}))
+                    self.assertEqual(r, 'done\n')
+        finally:
+            imp.reload(app_directories)
+            loader.template_source_loaders = old_loaders
 
     # TEMPLATE_DEBUG must be true, otherwise the exception raised
     # during {% include %} processing will be suppressed.

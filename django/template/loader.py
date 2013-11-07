@@ -83,7 +83,7 @@ class LoaderOrigin(Origin):
 
 
 def make_origin(display_name, loader, name, dirs):
-    if settings.TEMPLATE_DEBUG and display_name:
+    if display_name:
         return LoaderOrigin(display_name, loader, name, dirs)
     else:
         return None
@@ -115,7 +115,12 @@ def find_template_loader(loader):
         raise ImproperlyConfigured('Loader does not define a "load_template" callable template source loader')
 
 
-def find_template(name, dirs=None):
+def find_template(name, dirs=None, skip_template=None):
+    """
+    Returns a tuple with a compiled Template object for the given template name,
+    and a origin object skipping the current template. ``skip_template``
+    contains the absolute path of the template.
+    """
     # Calculate template_source_loaders the first time the function is executed
     # because putting this logic in the module-level namespace may cause
     # circular import errors. See Django ticket #1292.
@@ -127,21 +132,31 @@ def find_template(name, dirs=None):
             if loader is not None:
                 loaders.append(loader)
         template_source_loaders = tuple(loaders)
+    # check if the current template has something in common with the template to
+    # be skiped
+    skip = skip_template and skip_template.endswith(name)
     for loader in template_source_loaders:
         try:
             source, display_name = loader(name, dirs)
+            if skip:
+                # skip the template if its origin is skip_template
+                extends_tags = source.nodelist[0]
+                extends_tags_origin, extends_tags_source = extends_tags.source
+                if extends_tags_origin.name == skip_template:
+                    continue
             return (source, make_origin(display_name, loader, name, dirs))
         except TemplateDoesNotExist:
             pass
     raise TemplateDoesNotExist(name)
 
 
-def get_template(template_name, dirs=None):
+def get_template(template_name, dirs=None, skip_template=None):
     """
     Returns a compiled Template object for the given template name,
     handling template inheritance recursively.
     """
-    template, origin = find_template(template_name, dirs)
+    template, origin = find_template(template_name, dirs,
+                                     skip_template=skip_template)
     if not hasattr(template, 'render'):
         # template needs to be compiled
         template = get_template_from_string(template, origin, template_name)
