@@ -9,6 +9,8 @@ if __name__ == '__main__':
     settings.configure()
 
 from datetime import date, datetime
+from functools import wraps
+import imp
 import os
 import sys
 import traceback
@@ -150,6 +152,33 @@ class SilentAttrClass(object):
     b = property(b)
 
 
+class override_template_loaders(object):
+    def __init__(self, *loaders):
+        self.loaders = loaders
+        self.old_loaders = []
+        self.old_template_dirs = []
+
+    def __enter__(self):
+        self.old_loaders = loader.template_source_loaders
+        self.old_template_dirs = settings.TEMPLATE_DIRS
+
+        loader.template_source_loaders = self.loaders
+        this_dir = os.path.dirname(os.path.abspath(upath(__file__)))
+        template_dir = os.path.join(this_dir, 'templates')
+        settings.TEMPLATE_DIRS = [template_dir]
+
+    def __exit__(self, type, value, traceback):
+        loader.template_source_loaders = self.old_loaders
+        settings.TEMPLATE_DIRS = self.old_template_dirs
+
+    def __call__(self, test_func):
+        @wraps(test_func)
+        def inner(*args, **kwargs):
+            with self:
+                return test_func(*args, **kwargs)
+        return inner
+
+
 @python_2_unicode_compatible
 class UTF8Class:
     "Class whose __str__ returns non-ASCII data on Python 2"
@@ -213,9 +242,6 @@ class TemplateLoaderTests(TestCase):
             test_template_sources('/DIR1/index.HTML', template_dirs,
                                   ['/DIR1/index.HTML'])
 
-    # Turn TEMPLATE_DEBUG on, so that the origin file name will be kept with
-    # the compiled templates.
-    @override_settings(TEMPLATE_DEBUG=True)
     def test_loader_debug_origin(self):
         old_loaders = loader.template_source_loaders
 
@@ -251,18 +277,12 @@ class TemplateLoaderTests(TestCase):
             loader.template_source_loaders = old_loaders
 
     def test_loader_origin(self):
-        with self.settings(TEMPLATE_DEBUG=True):
-            template = loader.get_template('login.html')
-            self.assertEqual(template.origin.loadname, 'login.html')
+        template = loader.get_template('login.html')
+        self.assertEqual(template.origin.loadname, 'login.html')
 
     def test_string_origin(self):
-        with self.settings(TEMPLATE_DEBUG=True):
-            template = Template('string template')
-            self.assertEqual(template.origin.source, 'string template')
-
-    def test_debug_false_origin(self):
-        template = loader.get_template('login.html')
-        self.assertEqual(template.origin, None)
+        template = Template('string template')
+        self.assertEqual(template.origin.source, 'string template')
 
     # TEMPLATE_DEBUG must be true, otherwise the exception raised
     # during {% include %} processing will be suppressed.
@@ -353,6 +373,50 @@ class TemplateLoaderTests(TestCase):
             self.assertEqual(r, None, 'Template rendering unexpectedly succeeded, produced: ->%r<-' % r)
         finally:
             loader.template_source_loaders = old_loaders
+
+    def test_extends_existent_self(self):
+        """
+        When a template extends itself and an other template with the same name
+        is found, check that this other template is the extended one.
+        """
+        name = 'test_extend_self.html'
+        try:
+            with override_settings(INSTALLED_APPS=['template_tests.test_app']):
+                imp.reload(app_directories)
+                with override_template_loaders(filesystem.Loader(),
+                                               app_directories.Loader()):
+                    tmpl = loader.select_template([name])
+                    r = tmpl.render(template.Context({}))
+                    self.assertEqual(r, 'done\n')
+        finally:
+            imp.reload(app_directories)
+
+    @override_template_loaders(filesystem.Loader())
+    def test_extends_inexistent_self(self):
+        """
+        Recursion must be avoided and a TemplateDoesNotExist exception must be
+        raised when a template extends itself and no other template with the
+        same name exists.
+        """
+        name = 'test_extend_self.html'
+        tmpl = loader.select_template([name])
+        with self.assertRaises(template.TemplateDoesNotExist):
+            r = tmpl.render(template.Context({}))
+
+    def test_extend_cache_loader(self):
+        name = 'test_extend_self.html'
+        try:
+            with override_settings(INSTALLED_APPS=['template_tests.test_app']):
+                imp.reload(app_directories)
+                cache_loader = cached.Loader([])
+                cache_loader._cached_loaders = [filesystem.Loader(),
+                                                app_directories.Loader()]
+                with override_template_loaders(cache_loader):
+                    tmpl = loader.select_template([name])
+                    r = tmpl.render(template.Context({}))
+                    self.assertEqual(r, 'done\n')
+        finally:
+            imp.reload(app_directories)
 
     def test_include_template_argument(self):
         """
