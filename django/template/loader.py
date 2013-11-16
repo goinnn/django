@@ -134,16 +134,19 @@ def find_template(name, dirs=None, skip_template=None):
         template_source_loaders = tuple(loaders)
     # check if the current template has something in common with the template to
     # be skiped
-    skip = skip_template and skip_template.endswith(name)
+    needs_skip = skip_template and skip_template.loadname == name
+    found_template_loader = False
     for loader in template_source_loaders:
+        if needs_skip and not found_template_loader:
+            if hasattr(loader, 'load_template_source'):
+                if (hasattr(skip_template.loader, '__self__') and
+                   skip_template.loader.__self__.__class__ == loader.__class__):
+                    found_template_loader = True
+            else:  # old way to do template loaders
+                found_template_loader = skip_template.loader == loader
+            continue
         try:
             source, display_name = loader(name, dirs)
-            if skip:
-                # skip the template if its origin is skip_template
-                extends_tags = source.nodelist[0]
-                extends_tags_origin, extends_tags_source = extends_tags.source
-                if extends_tags_origin.name == skip_template:
-                    continue
             return (source, make_origin(display_name, loader, name, dirs))
         except TemplateDoesNotExist:
             pass

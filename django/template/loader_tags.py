@@ -100,7 +100,7 @@ class ExtendsNode(Node):
             return parent  # parent is a Template object
         # skip this very same template
         origin, source = self.source
-        return get_template(parent, skip_template=origin.name)
+        return get_template(parent, skip_template=origin)
 
     def render(self, context):
         compiled_parent = self.get_parent(context)
