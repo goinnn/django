@@ -127,10 +127,10 @@ class Template(object):
         except UnicodeDecodeError:
             raise TemplateEncodingError("Templates can only be constructed "
                                         "from unicode or UTF-8 strings.")
-        self.nodelist = compile_string(template_string, origin)
-        self.name = name
         if origin is None:
             origin = StringOrigin(template_string)
+        self.nodelist = compile_string(template_string, origin)
+        self.name = name
         self.origin = origin
 
     def __iter__(self):
