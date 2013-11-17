@@ -136,8 +136,7 @@ def find_template(name, dirs=None, skip_template=None):
     needs_skip = skip_template and skip_template.loadname == name
     for loader in template_source_loaders:
         if needs_skip and not found_template_loader:
-            if is_skip_loader(loader, skip_template):
-                found_template_loader = True
+            found_template_loader = is_skip_loader(loader, skip_template)
             continue
         try:
             source, display_name = loader(name, dirs)
