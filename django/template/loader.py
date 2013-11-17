@@ -136,7 +136,7 @@ def find_template(name, dirs=None, skip_template=None):
     needs_skip = skip_template and skip_template.loadname == name
     for loader in template_source_loaders:
         if needs_skip and not found_template_loader:
-            if is_skip_loader(name, loader, skip_template):
+            if is_skip_loader(loader, skip_template):
                 found_template_loader = True
             continue
         try:
@@ -147,12 +147,12 @@ def find_template(name, dirs=None, skip_template=None):
     raise TemplateDoesNotExist(name)
 
 
-def is_skip_loader(name, loader, skip_template=None):
+def is_skip_loader(loader, skip_template=None):
     """
     Check if the template and the template to be skiped have the same name and
     loaders.
     """
-    if skip_template is not None and skip_template.loadname == name:
+    if skip_template is not None:
         # Get the class if they are bound methods
         skiped = getattr(skip_template.loader, '__self__', skip_template.loader)
         current = getattr(loader, '__self__', loader)
