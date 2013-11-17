@@ -132,17 +132,22 @@ def find_template(name, dirs=None, skip_template=None):
             if loader is not None:
                 loaders.append(loader)
         template_source_loaders = tuple(loaders)
+    found_template_loader = False
+    needs_skip = skip_template and skip_template.loadname == name
     for loader in template_source_loaders:
-        if not skip_loader(name, loader, skip_template):
-            try:
-                source, display_name = loader(name, dirs)
-                return (source, make_origin(display_name, loader, name, dirs))
-            except TemplateDoesNotExist:
-                pass
+        if needs_skip and not found_template_loader:
+            if is_skip_loader(name, loader, skip_template):
+                found_template_loader = True
+            continue
+        try:
+            source, display_name = loader(name, dirs)
+            return (source, make_origin(display_name, loader, name, dirs))
+        except TemplateDoesNotExist:
+            pass
     raise TemplateDoesNotExist(name)
 
 
-def skip_loader(name, loader, skip_template):
+def is_skip_loader(name, loader, skip_template=None):
     """
     Check if the template and the template to be skiped have the same name and
     loaders.
