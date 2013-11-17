@@ -5,12 +5,13 @@ to load templates from them in order, caching the result.
 
 import hashlib
 from django.template.base import TemplateDoesNotExist
-from django.template.loader import BaseLoader, get_template_from_string, find_template_loader, make_origin
+from django.template.loader import BaseLoader, get_template_from_string, find_template_loader, make_origin, is_skip_loader
 from django.utils.encoding import force_bytes
 
 
 class Loader(BaseLoader):
     is_usable = True
+    use_skip_template = True
 
     def __init__(self, loaders):
         self.template_cache = {}
@@ -30,29 +31,38 @@ class Loader(BaseLoader):
             self._cached_loaders = cached_loaders
         return self._cached_loaders
 
-    def cache_key(self, template_name, template_dirs):
+    def cache_key(self, template_name, template_dirs, skip_template):
         if template_dirs:
             # If template directories were specified, use a hash to differentiate
-            return '-'.join([template_name, hashlib.sha1(force_bytes('|'.join(template_dirs))).hexdigest()])
+            key = '-'.join([template_name, hashlib.sha1(force_bytes('|'.join(template_dirs))).hexdigest()])
         else:
-            return template_name
+            key = template_name
+        if skip_template:
+            skip_loader = skip_template.loader
+            key = key + '-' + str(type(skip_loader.__self__))
+        return key
 
-    def find_template(self, name, dirs=None):
+    def find_template(self, name, dirs=None, skip_template=None):
         """
         Helper method. Lookup the template :param name: in all the configured loaders
         """
-        key = self.cache_key(name, dirs)
+        key = self.cache_key(name, dirs, skip_template)
         try:
             result = self.find_template_cache[key]
         except KeyError:
             result = None
+            needs_skip = skip_template and skip_template.loadname == name
+            found_template_loader = False
             for loader in self.loaders:
+                if needs_skip and not found_template_loader:
+                    found_template_loader = is_skip_loader(loader, skip_template)
+                    continue
                 try:
                     template, display_name = loader(name, dirs)
+                    result = (template, make_origin(display_name, loader, name, dirs))
+                    break
                 except TemplateDoesNotExist:
                     pass
-                else:
-                    result = (template, make_origin(display_name, loader, name, dirs))
         self.find_template_cache[key] = result
         if result:
             return result
@@ -60,14 +70,14 @@ class Loader(BaseLoader):
             self.template_cache[key] = TemplateDoesNotExist
             raise TemplateDoesNotExist(name)
 
-    def load_template(self, template_name, template_dirs=None):
-        key = self.cache_key(template_name, template_dirs)
+    def load_template(self, template_name, template_dirs=None, skip_template=None):
+        key = self.cache_key(template_name, template_dirs, skip_template)
         template_tuple = self.template_cache.get(key)
         # A cached previous failure:
         if template_tuple is TemplateDoesNotExist:
             raise TemplateDoesNotExist
         elif template_tuple is None:
-            template, origin = self.find_template(template_name, template_dirs)
+            template, origin = self.find_template(template_name, template_dirs, skip_template)
             if not hasattr(template, 'render'):
                 try:
                     template = get_template_from_string(template, origin, template_name)

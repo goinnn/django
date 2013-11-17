@@ -36,15 +36,19 @@ template_source_loaders = None
 
 class BaseLoader(object):
     is_usable = False
+    use_skip_template = False
 
     def __init__(self, *args, **kwargs):
         pass
 
-    def __call__(self, template_name, template_dirs=None):
-        return self.load_template(template_name, template_dirs)
+    def __call__(self, template_name, template_dirs=None, skip_template=None):
+        return self.load_template(template_name, template_dirs, skip_template)
 
-    def load_template(self, template_name, template_dirs=None):
-        source, display_name = self.load_template_source(template_name, template_dirs)
+    def load_template(self, template_name, template_dirs=None, skip_template=None):
+        args = (template_name, template_dirs)
+        if self.use_skip_template:
+            args += (skip_template,)
+        source, display_name = self.load_template_source(*args)
         origin = make_origin(display_name, self.load_template_source, template_name, template_dirs)
         try:
             template = get_template_from_string(source, origin, template_name)
@@ -135,11 +139,11 @@ def find_template(name, dirs=None, skip_template=None):
     found_template_loader = False
     needs_skip = skip_template and skip_template.loadname == name
     for loader in template_source_loaders:
-        if needs_skip and not found_template_loader:
+        if needs_skip and not found_template_loader and not loader.use_skip_template:
             found_template_loader = is_skip_loader(loader, skip_template)
             continue
         try:
-            source, display_name = loader(name, dirs)
+            source, display_name = loader(name, dirs, skip_template)
             return (source, make_origin(display_name, loader, name, dirs))
         except TemplateDoesNotExist:
             pass
