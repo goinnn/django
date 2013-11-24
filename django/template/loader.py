@@ -36,15 +36,19 @@ template_source_loaders = None
 
 class BaseLoader(object):
     is_usable = False
+    use_skip_template = False
 
     def __init__(self, *args, **kwargs):
         pass
 
-    def __call__(self, template_name, template_dirs=None):
-        return self.load_template(template_name, template_dirs)
+    def __call__(self, template_name, template_dirs=None, skip_template=None):
+        return self.load_template(template_name, template_dirs, skip_template)
 
-    def load_template(self, template_name, template_dirs=None):
-        source, display_name = self.load_template_source(template_name, template_dirs)
+    def load_template(self, template_name, template_dirs=None, skip_template=None):
+        args = (template_name, template_dirs)
+        if self.use_skip_template:
+            args += (skip_template,)
+        source, display_name = self.load_template_source(*args)
         origin = make_origin(display_name, self.load_template_source, template_name, template_dirs)
         try:
             template = get_template_from_string(source, origin, template_name)
@@ -115,7 +119,7 @@ def find_template_loader(loader):
         raise ImproperlyConfigured('Loader does not define a "load_template" callable template source loader')
 
 
-def find_template(name, dirs=None, skip_template=None):
+def find_template(name, dirs=None, skip_template=None, loaders=None):
     """
     Returns a tuple with a compiled Template object for the given template name,
     and a origin object skipping the current template. ``skip_template``
@@ -126,22 +130,23 @@ def find_template(name, dirs=None, skip_template=None):
     # circular import errors. See Django ticket #1292.
     global template_source_loaders
     if template_source_loaders is None:
-        loaders = []
+        template_loaders = []
         for loader_name in settings.TEMPLATE_LOADERS:
             loader = find_template_loader(loader_name)
             if loader is not None:
-                loaders.append(loader)
-        template_source_loaders = tuple(loaders)
+                template_loaders.append(loader)
+        template_source_loaders = tuple(template_loaders)
+
     # If there is a template to skip with the same name as the current template,
     # skip all the loaders until the loader of template to skip is found (and skip
     # that one too)
-    loaders = template_source_loaders
+    loaders = loaders or template_source_loaders
     if skip_template is not None and skip_template.loadname == name:
         loaders = skip_loaders(loaders, skip_template)
     # Iterate through the loaders until a match is foun
     for loader in loaders:
         try:
-            source, display_name = loader(name, dirs)
+            source, display_name = loader(name, dirs, skip_template)
             return (source, make_origin(display_name, loader, name, dirs))
         except TemplateDoesNotExist:
             pass
@@ -160,7 +165,7 @@ def skip_loaders(loaders, skip_template):
     for loader in loaders:
         # Get the current loader object
         loader = getattr(loader, '__self__', loader)
-        if has_been_skiped:
+        if has_been_skiped or loader.use_skip_template:
             yield loader
         if loader == loader_to_skip:
             has_been_skiped = True
