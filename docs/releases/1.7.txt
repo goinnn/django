@@ -483,6 +483,13 @@ Templates
   * :func:`django.shortcuts.render()`
   * :func:`django.shortcuts.render_to_response()`
 
+* The following functions now accept a ``skip_template`` parameter which is a
+  template who's loader will be skipped:
+
+  * :func:`django.template.loader.get_template()`
+  * :func:`django.template.loader.select_template()`
+  * ``django.template.loader.Loader.load_template()``
+
 * The :tfilter:`time` filter now accepts timzone-related :ref:`format
   specifiers <date-and-time-formatting-specifiers>` ``'e'``, ``'O'`` , ``'T'``
   and ``'Z'`` and is able to digest :ref:`time-zone-aware

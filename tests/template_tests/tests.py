@@ -2038,7 +2038,7 @@ class ExtendsTests(TestCase):
         """
         with override_template_loaders(self.loaders['one'],
                                        self.loaders['base']):
-            tmpl = loader.select_template([self.name])
+            tmpl = loader.get_template(self.name)
             r = tmpl.render(template.Context({}))
             self.assertEqual(r, 'one\n\n\n')
 
@@ -2049,7 +2049,7 @@ class ExtendsTests(TestCase):
         recursion must be avoided and an exception raised.
         """
         with override_template_loaders(self.loaders['one']):
-            tmpl = loader.select_template([self.name])
+            tmpl = loader.get_template(self.name)
             with self.assertRaises(template.TemplateDoesNotExist):
                 r = tmpl.render(template.Context({}))
 
@@ -2065,7 +2065,7 @@ class ExtendsTests(TestCase):
                 self.loaders['base'],
                 ]
         with override_template_loaders(*loaders):
-            tmpl = loader.select_template([self.name])
+            tmpl = loader.get_template(self.name)
             r = tmpl.render(template.Context({}))
             self.assertEqual(r, 'one\ntwo\nthree\n')
 
@@ -2077,6 +2077,6 @@ class ExtendsTests(TestCase):
         cache_loader._cached_loaders = [self.loaders['one'],
                                         self.loaders['base']]
         with override_template_loaders(cache_loader):
-            tmpl = loader.select_template([self.name])
+            tmpl = loader.get_template(self.name)
             r = tmpl.render(template.Context({}))
             self.assertEqual(r, 'one\n\n\n')
